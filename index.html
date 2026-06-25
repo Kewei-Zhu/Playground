@@ -6,9 +6,9 @@
 <title>Visual Motif Generator</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; background: #000; overflow: hidden; }
-.wrap { display: flex; flex-direction: column; height: 100vh; }
-canvas { display: block; width: 100%; flex: 1; }
+html, body { height: 100%; background: #000; margin: 0; padding: 0; }
+.wrap { display: flex; flex-direction: column; height: 100vh; min-height: 0; }
+canvas { display: block; width: 100%; min-height: 0; flex: 1; }
 .controls {
   background: #0a0a0a;
   border-top: 0.5px solid #222;
@@ -118,7 +118,7 @@ button.active { color: #0ff; border-color: #0ff; }
       <div class="color-pair"><span>BG</span><input type="color" id="bg" value="#000000"></div>
     </div>
     <div class="btn-row">
-      <button id="animBtn">▶ Animate</button>
+      <button id="animBtn" class="active">⏸ Pause</button>
       <button id="randBtn">⟳ Randomize</button>
       <button id="saveBtn">↓ Save PNG</button>
     </div>
@@ -128,7 +128,7 @@ button.active { color: #0ff; border-color: #0ff; }
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-let anim = false, animId = null, animT = 0;
+let anim = true, animId = null, animT = 0;
 
 function get(id){ return document.getElementById(id); }
 function val(id){ return parseFloat(get(id).value); }
@@ -252,6 +252,7 @@ get('saveBtn').addEventListener('click', () => {
 
 window.addEventListener('resize', resize);
 resize();
+animId = requestAnimationFrame(loop);
 </script>
 </body>
 </html>
