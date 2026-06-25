@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visual Motif Generator</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #000; overflow: hidden; }
+.wrap { display: flex; flex-direction: column; height: 100vh; }
+canvas { display: block; width: 100%; flex: 1; }
+.controls {
+  background: #0a0a0a;
+  border-top: 0.5px solid #222;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+}
+.ctrl { display: flex; flex-direction: column; gap: 4px; }
+.ctrl label {
+  font-family: monospace;
+  font-size: 11px;
+  color: #888;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+}
+.ctrl label span { color: #ccc; }
+.ctrl.highlight label { color: #0ff; }
+.ctrl.highlight label span { color: #0ff; }
+.ctrl.highlight input[type=range] { accent-color: #e91e8c; }
+input[type=range] { width: 100%; accent-color: #0ff; height: 3px; cursor: pointer; }
+.color-row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.color-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+  font-size: 11px;
+  color: #888;
+}
+input[type=color] {
+  width: 32px;
+  height: 22px;
+  border: 0.5px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  padding: 1px;
+}
+.btn-row { grid-column: 1 / -1; display: flex; gap: 8px; }
+button {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 5px 12px;
+  border: 0.5px solid #333;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+button:hover { color: #fff; border-color: #555; }
+button.active { color: #0ff; border-color: #0ff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c"></canvas>
+  <div class="controls">
+    <div class="ctrl">
+      <label>Layers <span id="lv">8</span></label>
+      <input type="range" id="layers" min="2" max="24" step="1" value="8">
+    </div>
+    <div class="ctrl">
+      <label>Rotation° <span id="rv">45</span></label>
+      <input type="range" id="rot" min="0" max="90" step="1" value="45">
+    </div>
+    <div class="ctrl highlight">
+      <label>Layer offset° <span id="lov">0</span></label>
+      <input type="range" id="lo" min="-20" max="20" step="0.5" value="0">
+    </div>
+    <div class="ctrl">
+      <label>Corner radius <span id="crv">80</span></label>
+      <input type="range" id="cr" min="0" max="200" step="1" value="80">
+    </div>
+    <div class="ctrl">
+      <label>Spacing <span id="spv">48</span></label>
+      <input type="range" id="sp" min="10" max="120" step="1" value="48">
+    </div>
+    <div class="ctrl">
+      <label>Line width <span id="lwv">1.5</span></label>
+      <input type="range" id="lw" min="0.5" max="6" step="0.5" value="1.5">
+    </div>
+    <div class="ctrl">
+      <label>Offset X <span id="oxv">0</span></label>
+      <input type="range" id="ox" min="-200" max="200" step="1" value="0">
+    </div>
+    <div class="ctrl">
+      <label>Offset Y <span id="oyv">0</span></label>
+      <input type="range" id="oy" min="-200" max="200" step="1" value="0">
+    </div>
+    <div class="ctrl">
+      <label>Opacity <span id="opv">1.0</span></label>
+      <input type="range" id="op" min="0.1" max="1" step="0.1" value="1">
+    </div>
+    <div class="color-row">
+      <div class="color-pair"><span>Color A</span><input type="color" id="ca" value="#00e5ff"></div>
+      <div class="color-pair"><span>Color B</span><input type="color" id="cb" value="#e91e8c"></div>
+      <div class="color-pair"><span>BG</span><input type="color" id="bg" value="#000000"></div>
+    </div>
+    <div class="btn-row">
+      <button id="animBtn">▶ Animate</button>
+      <button id="randBtn">⟳ Randomize</button>
+      <button id="saveBtn">↓ Save PNG</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let anim = false, animId = null, animT = 0;
+
+function get(id){ return document.getElementById(id); }
+function val(id){ return parseFloat(get(id).value); }
+
+function roundedRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, Math.min(w,h)/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+function draw(t) {
+  const W = canvas.width, H = canvas.height;
+  const layers = val('layers');
+  const rotDeg = val('rot') + (anim ? t * 15 : 0);
+  const layerOffset = val('lo');
+  const cr = val('cr');
+  const sp = val('sp') + (anim ? Math.sin(t * 0.7) * 12 : 0);
+  const lw = val('lw');
+  const ox = val('ox');
+  const oy = val('oy');
+  const op = val('op');
+  const ca = get('ca').value;
+  const cb = get('cb').value;
+  const bgc = get('bg').value;
+
+  ctx.fillStyle = bgc;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W/2 + ox * devicePixelRatio;
+  const cy = H/2 + oy * devicePixelRatio;
+  const baseSize = Math.min(W, H) * 0.28;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalAlpha = op;
+
+  for(let i = layers - 1; i >= 0; i--) {
+    const s = baseSize + i * sp * devicePixelRatio;
+    const angle = (rotDeg + i * layerOffset) * Math.PI / 180;
+    const color = i % 2 === 0 ? ca : cb;
+    ctx.save();
+    ctx.rotate(angle);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw * devicePixelRatio;
+    roundedRect(ctx, -s, -s, s*2, s*2, cr * devicePixelRatio);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  draw(animT);
+}
+
+function loop(ts) {
+  animT = ts / 1000;
+  draw(animT);
+  if(anim) animId = requestAnimationFrame(loop);
+}
+
+const labelMap = {layers:'lv',rot:'rv',lo:'lov',cr:'crv',sp:'spv',lw:'lwv',ox:'oxv',oy:'oyv',op:'opv'};
+document.querySelectorAll('input[type=range]').forEach(el => {
+  el.addEventListener('input', () => {
+    const id = el.id;
+    if(labelMap[id]) {
+      let v = el.value;
+      if(id === 'op') v = parseFloat(v).toFixed(1);
+      if(id === 'lw') v = parseFloat(v).toFixed(1);
+      if(id === 'lo') v = parseFloat(v).toFixed(1);
+      get(labelMap[id]).textContent = v;
+    }
+    if(!anim) draw(0);
+  });
+});
+
+document.querySelectorAll('input[type=color]').forEach(el => {
+  el.addEventListener('input', () => { if(!anim) draw(0); });
+});
+
+get('animBtn').addEventListener('click', () => {
+  anim = !anim;
+  get('animBtn').classList.toggle('active', anim);
+  get('animBtn').textContent = anim ? '⏸ Pause' : '▶ Animate';
+  if(anim) animId = requestAnimationFrame(loop);
+  else { cancelAnimationFrame(animId); draw(0); }
+});
+
+get('randBtn').addEventListener('click', () => {
+  const rnd = (min,max) => Math.floor(Math.random()*(max-min+1))+min;
+  const rndF = (min,max,step) => (Math.round((Math.random()*(max-min)+min)/step)*step).toFixed(1);
+  get('layers').value = rnd(4, 20); get('lv').textContent = get('layers').value;
+  get('rot').value = rnd(0, 90); get('rv').textContent = get('rot').value;
+  get('lo').value = rndF(-15, 15, 0.5); get('lov').textContent = get('lo').value;
+  get('cr').value = rnd(0, 180); get('crv').textContent = get('cr').value;
+  get('sp').value = rnd(20, 90); get('spv').textContent = get('sp').value;
+  get('lw').value = rndF(0.5, 4, 0.5); get('lwv').textContent = get('lw').value;
+  get('ox').value = rnd(-100, 100); get('oxv').textContent = get('ox').value;
+  get('oy').value = rnd(-100, 100); get('oyv').textContent = get('oy').value;
+  const rndHex = () => '#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0');
+  get('ca').value = rndHex();
+  get('cb').value = rndHex();
+  if(!anim) draw(0);
+});
+
+get('saveBtn').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'motif.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+window.addEventListener('resize', resize);
+resize();
+</script>
+</body>
+</html>
